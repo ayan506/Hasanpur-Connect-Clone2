@@ -302,6 +302,52 @@ function BusinessesTab() {
   const [busy, setBusy] = useState<Record<number, boolean>>({});
   const [expandedHistory, setExpandedHistory] = useState<number | null>(null);
   const [editHistory, setEditHistory] = useState<Record<number, any[]>>({});
+  const [editingBusiness, setEditingBusiness] = useState<any | null>(null);
+  const [editForm, setEditForm] = useState<Record<string, string>>({});
+  const [editBusy, setEditBusy] = useState(false);
+
+  const openEdit = (b: any) => {
+    setEditingBusiness(b);
+    setEditForm({
+      name: b.name ?? "",
+      address: b.address ?? "",
+      landmark: b.landmark ?? "",
+      phone: b.phone ?? "",
+      alternatePhone: b.alternatePhone ?? "",
+      whatsapp: b.whatsapp ?? "",
+      email: b.email ?? "",
+      website: b.website ?? "",
+      ownerName: b.ownerName ?? "",
+      ownerEmail: b.ownerEmail ?? "",
+      ownerPhone: b.ownerPhone ?? "",
+      description: b.description ?? "",
+      establishmentYear: b.establishmentYear ?? "",
+      gstNumber: b.gstNumber ?? "",
+    });
+  };
+
+  const saveEdit = async () => {
+    if (!editingBusiness) return;
+    setEditBusy(true);
+    try {
+      const res = await fetch(`${BASE}/api/businesses/${editingBusiness.id}/admin-edit`, {
+        method: "PATCH",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify(editForm),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `HTTP ${res.status}`);
+      }
+      toast({ title: "Business updated" });
+      setEditingBusiness(null);
+      refetch();
+    } catch (e: any) {
+      toast({ title: "Failed: " + e.message, variant: "destructive" });
+    } finally {
+      setEditBusy(false);
+    }
+  };
 
   const loadEditHistory = async (id: number) => {
     if (expandedHistory === id) { setExpandedHistory(null); return; }
@@ -355,6 +401,7 @@ function BusinessesTab() {
   };
 
   return (
+    <>
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
         <Input placeholder="Search businesses..." value={search} onChange={e => setSearch(e.target.value)} className="max-w-xs h-8 text-sm" />
@@ -420,9 +467,12 @@ function BusinessesTab() {
                     )}
                     <Link href={`/business/${b.slug}`}>
                       <Button size="sm" variant="outline" className="h-7 text-xs px-3">
-                        <Eye className="w-3 h-3 mr-1" />View
+                        <Eye className="w-3 h-3 mr-1" />{b.status === "approved" ? "View" : "Preview"}
                       </Button>
                     </Link>
+                    <Button size="sm" variant="outline" className="h-7 text-xs px-3" onClick={() => openEdit(b)}>
+                      <Edit2 className="w-3 h-3 mr-1" />Edit
+                    </Button>
                     <Button size="sm" disabled={loading} variant="ghost" className="h-7 px-3 text-xs text-destructive hover:bg-destructive/10" onClick={() => handleDelete(b.id, b.name)}>
                       <Trash2 className="w-3.5 h-3.5 mr-1" />Delete
                     </Button>
@@ -469,6 +519,64 @@ function BusinessesTab() {
         })}
       </div>
     </div>
+
+    {/* Admin Edit Business Dialog */}
+    {editingBusiness && (
+      <Dialog open={!!editingBusiness} onOpenChange={(o) => !o && setEditingBusiness(null)}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Edit2 className="w-4 h-4" />Edit Business — {editingBusiness.name}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 text-sm">
+            <p className="text-xs text-muted-foreground bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded px-3 py-2">
+              Admin edits apply immediately without resetting listing status.
+            </p>
+            {[
+              { key: "name", label: "Business Name" },
+              { key: "address", label: "Address" },
+              { key: "landmark", label: "Landmark" },
+              { key: "phone", label: "Phone" },
+              { key: "alternatePhone", label: "Alternate Phone" },
+              { key: "whatsapp", label: "WhatsApp" },
+              { key: "email", label: "Business Email" },
+              { key: "website", label: "Website" },
+              { key: "ownerName", label: "Owner Name" },
+              { key: "ownerEmail", label: "Owner Email" },
+              { key: "ownerPhone", label: "Owner Phone" },
+              { key: "establishmentYear", label: "Est. Year" },
+              { key: "gstNumber", label: "GST Number" },
+            ].map(({ key, label }) => (
+              <div key={key}>
+                <Label className="text-xs text-muted-foreground">{label}</Label>
+                <Input
+                  value={editForm[key] ?? ""}
+                  onChange={e => setEditForm(f => ({ ...f, [key]: e.target.value }))}
+                  className="h-8 text-sm mt-0.5"
+                />
+              </div>
+            ))}
+            <div>
+              <Label className="text-xs text-muted-foreground">Description</Label>
+              <Textarea
+                value={editForm.description ?? ""}
+                onChange={e => setEditForm(f => ({ ...f, description: e.target.value }))}
+                className="text-sm mt-0.5"
+                rows={3}
+              />
+            </div>
+            <div className="flex gap-2 pt-2">
+              <Button className="flex-1" disabled={editBusy} onClick={saveEdit}>
+                {editBusy ? "Saving…" : "Save Changes"}
+              </Button>
+              <Button variant="outline" onClick={() => setEditingBusiness(null)}>Cancel</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    )}
+    </>
   );
 }
 
@@ -2856,7 +2964,40 @@ function ProductsAdminTab() {
   const [pendingProducts, setPendingProducts] = useState<any[]>([]);
   const [loadingPending, setLoadingPending] = useState(true);
   const [processingProduct, setProcessingProduct] = useState<number | null>(null);
+  const [addProductBiz, setAddProductBiz] = useState<any | null>(null);
+  const [addForm, setAddForm] = useState({ name: "", description: "", price: "", unit: "", imageUrl: "", knowMoreUrl: "" });
+  const [addBusy, setAddBusy] = useState(false);
   const { toast } = useToast();
+
+  const submitAdminProduct = async () => {
+    if (!addProductBiz || !addForm.name.trim()) return;
+    setAddBusy(true);
+    try {
+      const res = await fetch(`${BASE}/api/products/admin/add`, {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          businessId: addProductBiz.id,
+          name: addForm.name.trim(),
+          description: addForm.description.trim() || undefined,
+          price: addForm.price ? Number(addForm.price) : undefined,
+          unit: addForm.unit.trim() || undefined,
+          imageUrl: addForm.imageUrl.trim() || undefined,
+          knowMoreUrl: addForm.knowMoreUrl.trim() || undefined,
+        }),
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Failed");
+      toast({ title: "Product added!" });
+      setAddProductBiz(null);
+      setAddForm({ name: "", description: "", price: "", unit: "", imageUrl: "", knowMoreUrl: "" });
+      // Refresh search results
+      setResults(prev => prev.map(b => b.id === addProductBiz.id ? { ...b, productCount: b.productCount + 1 } : b));
+    } catch (e: any) {
+      toast({ title: "Failed: " + e.message, variant: "destructive" });
+    } finally {
+      setAddBusy(false);
+    }
+  };
 
   const loadPending = () => {
     setLoadingPending(true);
@@ -3002,25 +3143,86 @@ function ProductsAdminTab() {
                 </div>
               </div>
 
-              {/* Products list */}
-              {biz.products?.length > 0 && (
-                <div className="mt-3 pt-3 border-t">
-                  <p className="text-xs font-semibold text-muted-foreground mb-2">Products ({biz.products.length})</p>
+              {/* Products list + Add Product */}
+              <div className="mt-3 pt-3 border-t">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs font-semibold text-muted-foreground">
+                    Products ({biz.products?.length ?? 0})
+                  </p>
+                  <Button size="sm" variant="outline" className="h-7 text-xs px-2.5 border-primary/40 text-primary" onClick={() => { setAddProductBiz(biz); setAddForm({ name: "", description: "", price: "", unit: "", imageUrl: "", knowMoreUrl: "" }); }}>
+                    <Plus className="w-3 h-3 mr-1" />Add Product
+                  </Button>
+                </div>
+                {biz.products?.length > 0 && (
                   <div className="space-y-1">
                     {biz.products.slice(0, 5).map((p: any) => (
                       <div key={p.id} className="flex items-center justify-between text-xs py-1 px-2 bg-muted/30 rounded">
                         <span className="font-medium truncate max-w-[60%]">{p.name}</span>
-                        <span className="text-muted-foreground">₹{(p.price ?? 0).toLocaleString()}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-muted-foreground">₹{(p.price ?? 0).toLocaleString()}</span>
+                          <StatusBadge status={p.status} />
+                        </div>
                       </div>
                     ))}
                     {biz.products.length > 5 && <p className="text-xs text-muted-foreground pl-2">+{biz.products.length - 5} more</p>}
                   </div>
-                </div>
-              )}
+                )}
+              </div>
             </CardContent>
           </Card>
         ))}
       </div>
+
+      {/* Add Product Dialog */}
+      {addProductBiz && (
+        <Dialog open={!!addProductBiz} onOpenChange={(o) => !o && setAddProductBiz(null)}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Plus className="w-4 h-4" />Add Product — {addProductBiz.name}
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3 text-sm">
+              <p className="text-xs text-muted-foreground bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded px-3 py-2">
+                Admin-added products are auto-approved and published immediately.
+              </p>
+              <div>
+                <Label className="text-xs">Product Name *</Label>
+                <Input value={addForm.name} onChange={e => setAddForm(f => ({ ...f, name: e.target.value }))} className="h-8 text-sm mt-0.5" placeholder="e.g. Fresh Paneer" />
+              </div>
+              <div>
+                <Label className="text-xs">Description</Label>
+                <Textarea value={addForm.description} onChange={e => setAddForm(f => ({ ...f, description: e.target.value }))} className="text-sm mt-0.5" rows={2} placeholder="Short product description" />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label className="text-xs">Price (₹)</Label>
+                  <Input type="number" min="0" value={addForm.price} onChange={e => setAddForm(f => ({ ...f, price: e.target.value }))} className="h-8 text-sm mt-0.5" placeholder="0" />
+                </div>
+                <div>
+                  <Label className="text-xs">Unit</Label>
+                  <Input value={addForm.unit} onChange={e => setAddForm(f => ({ ...f, unit: e.target.value }))} className="h-8 text-sm mt-0.5" placeholder="per kg, per piece…" />
+                </div>
+              </div>
+              <div>
+                <Label className="text-xs">Image URL</Label>
+                <Input value={addForm.imageUrl} onChange={e => setAddForm(f => ({ ...f, imageUrl: e.target.value }))} className="h-8 text-sm mt-0.5" placeholder="https://…" />
+              </div>
+              <div>
+                <Label className="text-xs">Know More URL</Label>
+                <Input value={addForm.knowMoreUrl} onChange={e => setAddForm(f => ({ ...f, knowMoreUrl: e.target.value }))} className="h-8 text-sm mt-0.5" placeholder="https://…" />
+              </div>
+              <div className="flex gap-2 pt-1">
+                <Button className="flex-1" disabled={addBusy || !addForm.name.trim()} onClick={submitAdminProduct}>
+                  {addBusy ? "Adding…" : "Add Product"}
+                </Button>
+                <Button variant="outline" onClick={() => setAddProductBiz(null)}>Cancel</Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
       {/* Pending Products Approval */}
       {!loadingPending && pendingProducts.length > 0 && (
         <Card className="border-amber-200 bg-amber-50/50 dark:bg-amber-900/10 dark:border-amber-800">

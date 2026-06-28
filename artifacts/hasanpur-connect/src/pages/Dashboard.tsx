@@ -226,9 +226,11 @@ export default function Dashboard() {
                     </div>
                   </div>
                   <div className="flex gap-2 flex-wrap">
-                    {myBusiness.status === "approved" && !isLocked && (
+                    {!isLocked && (
                       <Link href={`/business/${myBusiness.slug}`}>
-                        <Button variant="outline" size="sm">View Listing</Button>
+                        <Button variant="outline" size="sm">
+                          {myBusiness.status === "approved" ? "View Listing" : "Preview Listing"}
+                        </Button>
                       </Link>
                     )}
                     <Link href={`/register?edit=${myBusiness.id}`}>

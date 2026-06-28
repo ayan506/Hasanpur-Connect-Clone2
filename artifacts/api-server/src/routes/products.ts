@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { productsTable, businessesTable, notificationsTable } from "@workspace/db";
-import { eq, and, or, ilike, sql } from "drizzle-orm";
+import { productsTable, businessesTable, adminNotificationsTable } from "@workspace/db";
+import { eq, ilike, sql } from "drizzle-orm";
 import { CreateProductBody, UpdateProductBody, UpdateProductParams, DeleteProductParams, ListProductsQueryParams } from "@workspace/api-zod";
 import { requireAdminAuth } from "../middlewares/adminAuth";
 
@@ -21,9 +21,9 @@ router.post("/", async (req, res) => {
 
   const { businessId } = parsed.data;
 
-  // Enforce product limit
   const [biz] = await db.select().from(businessesTable).where(eq(businessesTable.id, businessId));
   if (!biz) return res.status(404).json({ error: "Business not found" });
+
   const limit = biz.productLimit ?? 5;
   const [{ count }] = await db.select({ count: sql<number>`count(*)::int` }).from(productsTable).where(eq(productsTable.businessId, businessId));
   if (count >= limit) return res.status(400).json({ error: "Product limit reached" });
@@ -33,15 +33,13 @@ router.post("/", async (req, res) => {
     status: "pending",
   }).returning();
 
-  // Notify admin of new pending product
   try {
-    await db.insert(notificationsTable).values({
+    await db.insert(adminNotificationsTable).values({
       type: "new_product",
       title: "New product submitted",
-      body: `${biz.name} submitted a new product: ${parsed.data.name}`,
+      message: `${biz.name} submitted a new product: ${parsed.data.name}`,
       entityType: "product",
       entityId: product.id,
-      isRead: false,
     });
   } catch {}
 
@@ -64,7 +62,6 @@ router.delete("/:id", async (req, res) => {
   return res.status(204).send();
 });
 
-// Admin: search business by ID (HC-000001 format or plain number) or owner email
 router.get("/admin/search", requireAdminAuth, async (req, res) => {
   const { q } = req.query as { q?: string };
   if (!q) return res.json([]);
@@ -99,7 +96,6 @@ router.get("/admin/search", requireAdminAuth, async (req, res) => {
   return res.json(results);
 });
 
-// Admin: update product limit for a business
 router.patch("/admin/:businessId/limit", requireAdminAuth, async (req, res) => {
   const { delta, setTo } = req.body;
   const bizId = Number(req.params.businessId);
@@ -125,7 +121,6 @@ router.patch("/admin/:businessId/limit", requireAdminAuth, async (req, res) => {
   return res.json(updated);
 });
 
-// Admin: list all pending products
 router.get("/admin/pending", requireAdminAuth, async (req, res) => {
   const rows = await db
     .select({ product: productsTable, businessName: businessesTable.name, businessId: businessesTable.id })
@@ -140,7 +135,6 @@ router.get("/admin/pending", requireAdminAuth, async (req, res) => {
   })));
 });
 
-// Admin: approve or reject a product
 router.patch("/admin/:id/status", requireAdminAuth, async (req, res) => {
   const id = parseInt(String(req.params.id));
   if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
@@ -152,18 +146,17 @@ router.patch("/admin/:id/status", requireAdminAuth, async (req, res) => {
   return res.json({ ...product, createdAt: product.createdAt?.toISOString() });
 });
 
-// Admin: add a product to any business directly (approved immediately)
 router.post("/admin/add", requireAdminAuth, async (req, res) => {
   const parsed = CreateProductBody.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "Invalid input" });
   const [product] = await db.insert(productsTable).values({
     ...parsed.data,
     status: "approved",
+    isAdminAdded: true,
   }).returning();
   return res.status(201).json({ ...product, createdAt: product.createdAt?.toISOString() });
 });
 
-// Admin: update / edit any product
 router.patch("/admin/:id/edit", requireAdminAuth, async (req, res) => {
   const id = parseInt(String(req.params.id));
   if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });

@@ -376,6 +376,35 @@ router.put("/:id", async (req, res) => {
   return res.json(serializeBiz(biz));
 });
 
+router.patch("/:id/admin-edit", requireAdminAuth, async (req, res) => {
+  const id = parseInt(String(req.params.id));
+  if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
+  const body = UpdateBusinessBody.safeParse(req.body);
+  if (!body.success) return res.status(400).json({ error: "Invalid input" });
+
+  const [existing] = await db.select().from(businessesTable).where(eq(businessesTable.id, id)).limit(1);
+  if (!existing) return res.status(404).json({ error: "Not found" });
+
+  const { businessHours, socialLinks, faqs, images, ...rest } = body.data;
+  const updates: Partial<typeof businessesTable.$inferInsert> = { ...rest };
+  if (businessHours !== undefined) updates.businessHoursJson = JSON.stringify(businessHours);
+  if (socialLinks !== undefined) updates.socialLinksJson = JSON.stringify(socialLinks);
+  if (faqs !== undefined) updates.faqsJson = JSON.stringify(faqs);
+  if (images !== undefined) updates.imagesJson = JSON.stringify(images);
+
+  const [biz] = await db.update(businessesTable).set(updates).where(eq(businessesTable.id, id)).returning();
+  if (!biz) return res.status(404).json({ error: "Not found" });
+
+  await db.insert(businessEditHistoryTable).values({
+    businessId: biz.id,
+    editedBy: "admin",
+    changesJson: JSON.stringify(body.data),
+    previousStatusJson: JSON.stringify({ status: existing.status }),
+  }).catch(() => {});
+
+  return res.json(serializeBiz(biz));
+});
+
 router.patch("/:id/badge", requireAdminAuth, async (req, res) => {
   const id = parseInt(String(req.params.id));
   if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
