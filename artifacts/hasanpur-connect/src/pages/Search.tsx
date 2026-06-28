@@ -23,7 +23,7 @@ export default function SearchPage() {
 
   const [query, setQuery] = useState(initialQ);
   const [category, setCategory] = useState(initialCategory);
-  const [submitted, setSubmitted] = useState(initialQ || initialCategory ? true : false);
+  const [submitted, setSubmitted] = useState(true);
 
   useMetaTags({
     title: `Search Businesses${initialQ ? ` — ${initialQ}` : ""} — Hasanpur Connect`,
